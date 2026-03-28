@@ -18,14 +18,19 @@ import pandas as pd
 
 import ee
 import streamlit as st
+import json
 
 if "ee_initialized" not in st.session_state:
-    
-    service_account_info = dict(st.secrets["gcp_service_account"])  # ✅ FIX
+
+    # Convert secrets to normal dict
+    service_account_info = dict(st.secrets["gcp_service_account"])
+
+    # Convert to JSON string (FIX)
+    service_account_json = json.dumps(service_account_info)
 
     credentials = ee.ServiceAccountCredentials(
         service_account_info["client_email"],
-        key_data=service_account_info
+        key_data=service_account_json
     )
 
     ee.Initialize(credentials)
