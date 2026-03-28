@@ -4,4 +4,4 @@ geopandas
 geemap==0.30.4
 python-box==7.1.1
 folium
-setuptools
+setuptools>=65.0.0
