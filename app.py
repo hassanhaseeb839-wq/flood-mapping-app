@@ -1,38 +1,23 @@
-# ==========================================
-import folium
-from streamlit_folium import st_folium
-# 🌊 AI FLOOD MAPPING SYSTEM (FINAL CLEAN)
-# ==========================================
-
 import streamlit as st
 import ee
 import json
-import geemap
 import geopandas as gpd
 import tempfile
 import zipfile
 import os
-import pandas as pd
+import folium
+from streamlit_folium import st_folium
 
 # ==========================================
-# 🔐 EARTH ENGINE AUTH (FIXED)
+# 🔐 EARTH ENGINE AUTH (FINAL FIXED)
 # ==========================================
-
-import ee
-import streamlit as st
-import json
 
 if "ee_initialized" not in st.session_state:
-
-    # Convert secrets to normal dict
     service_account_info = dict(st.secrets["gcp_service_account"])
-
-    # Convert to JSON string (FIX)
-    service_account_json = json.dumps(service_account_info)
 
     credentials = ee.ServiceAccountCredentials(
         service_account_info["client_email"],
-        key_data=service_account_json
+        key_data=json.dumps(service_account_info)
     )
 
     ee.Initialize(credentials)
@@ -40,23 +25,58 @@ if "ee_initialized" not in st.session_state:
 
 # ==========================================
 st.set_page_config(layout="wide")
-st.title("🌊 AI Universal Flood Mapping System")
+st.title("🌊 AI Flood Mapping System")
 
 # ==========================================
-# 🧠 INPUT HANDLER
+# 📥 INPUT
 # ==========================================
 
-def process_input(input_type, coords, uploaded_file):
+st.sidebar.header("Input")
+
+input_type = st.sidebar.radio("Select Input", ["Coordinates", "Shapefile"])
+
+coords = None
+uploaded_file = None
+
+if input_type == "Coordinates":
+    lon_min = st.sidebar.number_input("Min Lon", value=104.5)
+    lat_min = st.sidebar.number_input("Min Lat", value=15.0)
+    lon_max = st.sidebar.number_input("Max Lon", value=105.5)
+    lat_max = st.sidebar.number_input("Max Lat", value=15.8)
+    coords = (lon_min, lat_min, lon_max, lat_max)
+
+else:
+    uploaded_file = st.sidebar.file_uploader("Upload shapefile (.zip)", type=["zip"])
+
+# ==========================================
+# 📅 DATES
+# ==========================================
+
+st.sidebar.header("Dates")
+
+before_start = st.sidebar.date_input("Before Start")
+before_end   = st.sidebar.date_input("Before End")
+after_start  = st.sidebar.date_input("After Start")
+after_end    = st.sidebar.date_input("After End")
+
+# ==========================================
+# 📦 SESSION STATE
+# ==========================================
+
+if "aoi" not in st.session_state:
+    st.session_state.aoi = None
+
+if "flood_map" not in st.session_state:
+    st.session_state.flood_map = None
+
+# ==========================================
+# 🧠 PROCESS INPUT
+# ==========================================
+
+def process_input():
     if input_type == "Coordinates":
         lon_min, lat_min, lon_max, lat_max = coords
-
-        if lon_min > lon_max:
-            lon_min, lon_max = lon_max, lon_min
-        if lat_min > lat_max:
-            lat_min, lat_max = lat_max, lat_min
-
-        aoi = ee.Geometry.Rectangle([lon_min, lat_min, lon_max, lat_max])
-        area_size = (lon_max - lon_min) * (lat_max - lat_min)
+        return ee.Geometry.Rectangle([lon_min, lat_min, lon_max, lat_max])
 
     else:
         temp_dir = tempfile.mkdtemp()
@@ -71,119 +91,19 @@ def process_input(input_type, coords, uploaded_file):
         shp = [f for f in os.listdir(temp_dir) if f.endswith(".shp")][0]
         gdf = gpd.read_file(os.path.join(temp_dir, shp))
 
-        aoi = geemap.geopandas_to_ee(gdf)
-        area_size = float(gdf.area.mean())
-
-    return aoi, area_size
+        return ee.Geometry.Polygon(gdf.geometry.iloc[0].__geo_interface__['coordinates'])
 
 # ==========================================
-# 🧠 AI PREPROCESS (FIXED)
+# 🚀 GENERATE FLOOD MAP
 # ==========================================
 
-def ai_preprocess(aoi):
+if st.sidebar.button("Generate Flood Map"):
 
-    terrain = ee.Terrain.slope(ee.Image("USGS/SRTMGL1_003"))
-
-    avg_slope = ee.Number(
-        terrain.reduceRegion(
-            reducer=ee.Reducer.mean(),
-            geometry=aoi,
-            scale=90,
-            maxPixels=1e13
-        ).get('slope')
-    )
-
-    slope_val = avg_slope.getInfo()
-
-    if slope_val > 8:
-        terrain_type = "Mountain"
-        k = 1.5
-        smoothing = 60
-    elif slope_val > 3:
-        terrain_type = "Mixed"
-        k = 1.2
-        smoothing = 40
+    if input_type == "Shapefile" and uploaded_file is None:
+        st.error("Upload shapefile first")
     else:
-        terrain_type = "Flat"
-        k = 1.0
-        smoothing = 40
-
-    return slope_val, terrain_type, k, smoothing
-
-# ==========================================
-# 🔹 UI INPUT
-# ==========================================
-
-st.sidebar.header("📥 Input")
-
-input_type = st.sidebar.radio("Select Input", ["Coordinates", "Shapefile"])
-
-coords = None
-uploaded_file = None
-
-if input_type == "Coordinates":
-    lon_min = st.sidebar.number_input("Min Lon", value=56.0)
-    lat_min = st.sidebar.number_input("Min Lat", value=25.5)
-    lon_max = st.sidebar.number_input("Max Lon", value=57.5)
-    lat_max = st.sidebar.number_input("Max Lat", value=26.7)
-
-    coords = (lon_min, lat_min, lon_max, lat_max)
-
-else:
-    uploaded_file = st.sidebar.file_uploader("Upload .zip shapefile", type=["zip"])
-
-st.sidebar.header("📅 Dates")
-
-before_start = st.sidebar.date_input("Before Start")
-before_end   = st.sidebar.date_input("Before End")
-after_start  = st.sidebar.date_input("After Start")
-after_end    = st.sidebar.date_input("After End")
-
-# ==========================================
-# SESSION STATE
-# ==========================================
-
-if "aoi" not in st.session_state:
-    st.session_state.aoi = None
-
-if "params" not in st.session_state:
-    st.session_state.params = None
-
-# ==========================================
-# BUTTONS
-# ==========================================
-
-if st.sidebar.button("1️⃣ Process Input"):
-    aoi, area_size = process_input(input_type, coords, uploaded_file)
-    st.session_state.aoi = aoi
-    st.success(f"Input Processed | Area Size: {area_size:.4f}")
-
-if st.sidebar.button("2️⃣ AI Preprocess"):
-    if st.session_state.aoi is None:
-        st.error("Process input first")
-    else:
-        slope, terrain, k, smooth = ai_preprocess(st.session_state.aoi)
-
-        st.session_state.params = {
-            "slope": slope,
-            "terrain": terrain,
-            "k": k,
-            "smooth": smooth
-        }
-
-        st.success(f"Terrain: {terrain} | Slope: {slope:.2f}")
-
-if st.sidebar.button("3️⃣ Generate Flood Map"):
-
-    if st.session_state.aoi is None or st.session_state.params is None:
-        st.error("Complete previous steps first")
-
-    else:
-        aoi = st.session_state.aoi
-        params = st.session_state.params
-
-        def reduce_speckle(img):
-            return img.focal_median(params["smooth"], 'square', 'meters')
+        aoi = process_input()
+        st.session_state.aoi = aoi
 
         def get_s1(start, end):
             return (ee.ImageCollection("COPERNICUS/S1_GRD")
@@ -191,10 +111,10 @@ if st.sidebar.button("3️⃣ Generate Flood Map"):
                     .filterDate(str(start), str(end))
                     .filter(ee.Filter.eq('instrumentMode', 'IW'))
                     .select('VV')
-                    .map(reduce_speckle))
+                    .median())
 
-        before = get_s1(before_start, before_end).median()
-        after  = get_s1(after_start, after_end).median()
+        before = get_s1(before_start, before_end)
+        after  = get_s1(after_start, after_end)
 
         change = before.subtract(after)
 
@@ -211,30 +131,34 @@ if st.sidebar.button("3️⃣ Generate Flood Map"):
         mean = ee.Number(stats.get('VV_mean')).getInfo()
         std  = ee.Number(stats.get('VV_stdDev')).getInfo()
 
-        threshold = mean + std * params["k"]
+        threshold = mean + std * 0.8
 
         flood = change.gt(threshold)
 
-        terrain = ee.Terrain.slope(ee.Image("USGS/SRTMGL1_003"))
-        flood = flood.updateMask(terrain.lt(6))
-
         cleaned = flood.focal_max(1).focal_min(1)
 
-       # Convert EE image to URL
-map_id = cleaned.clip(aoi).getMapId({'palette': ['red']})
+        st.session_state.flood_map = cleaned
 
-# Create folium map
-m = folium.Map(location=[15.5, 104.5], zoom_start=7)
+        st.success("Flood Map Generated ✅")
 
-# Add tile layer
-folium.TileLayer(
-    tiles=map_id['tile_fetcher'].url_format,
-    attr='Google Earth Engine',
-    overlay=True,
-    name='Flood'
-).add_to(m)
+# ==========================================
+# 🗺️ DISPLAY MAP (FINAL FIXED)
+# ==========================================
 
-# Display in Streamlit
-st_folium(m, width=700, height=500)
+if st.session_state.flood_map is not None:
 
-        
+    aoi = st.session_state.aoi
+    flood_img = st.session_state.flood_map
+
+    map_id = flood_img.clip(aoi).getMapId({'palette': ['red']})
+
+    m = folium.Map(location=[15.5, 104.5], zoom_start=7)
+
+    folium.TileLayer(
+        tiles=map_id['tile_fetcher'].url_format,
+        attr='Google Earth Engine',
+        overlay=True,
+        name='Flood'
+    ).add_to(m)
+
+    st_folium(m, width=900, height=600)
