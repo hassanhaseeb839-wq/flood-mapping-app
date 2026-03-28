@@ -1,9 +1,10 @@
 # ==========================================
-# 🌊 AI FLOOD MAPPING SYSTEM (FINAL UI)
+# 🌊 AI FLOOD MAPPING SYSTEM (FINAL CLEAN)
 # ==========================================
 
 import streamlit as st
 import ee
+import json
 import geemap
 import geopandas as gpd
 import tempfile
@@ -12,37 +13,37 @@ import os
 import pandas as pd
 
 # ==========================================
-# 🔐 AUTH
+# 🔐 EARTH ENGINE AUTH (FIXED)
 # ==========================================
 
+if "ee_initialized" not in st.session_state:
+    service_account = st.secrets["gcp_service_account"]["client_email"]
 
-import ee
-import streamlit as st
-import json
+    credentials = ee.ServiceAccountCredentials(
+        service_account,
+        key_data=json.dumps(st.secrets["gcp_service_account"])
+    )
 
-service_account = st.secrets["gcp_service_account"]["client_email"]
-
-credentials = ee.ServiceAccountCredentials(
-    service_account,
-    key_data=json.dumps(st.secrets["gcp_service_account"])
-)
-
-ee.Initialize(credentials)
+    ee.Initialize(credentials)
+    st.session_state.ee_initialized = True
 
 # ==========================================
-# 🧠 AI INPUT HANDLER
+st.set_page_config(layout="wide")
+st.title("🌊 AI Universal Flood Mapping System")
+
+# ==========================================
+# 🧠 INPUT HANDLER
 # ==========================================
 
 def process_input(input_type, coords, uploaded_file):
     if input_type == "Coordinates":
         lon_min, lat_min, lon_max, lat_max = coords
-        
-        # AI correction
+
         if lon_min > lon_max:
             lon_min, lon_max = lon_max, lon_min
         if lat_min > lat_max:
             lat_min, lat_max = lat_max, lat_min
-        
+
         aoi = ee.Geometry.Rectangle([lon_min, lat_min, lon_max, lat_max])
         area_size = (lon_max - lon_min) * (lat_max - lat_min)
 
@@ -60,13 +61,12 @@ def process_input(input_type, coords, uploaded_file):
         gdf = gpd.read_file(os.path.join(temp_dir, shp))
 
         aoi = geemap.geopandas_to_ee(gdf)
-        area_size = gdf.area.mean()
+        area_size = float(gdf.area.mean())
 
     return aoi, area_size
 
-
 # ==========================================
-# 🧠 AI PREPROCESS ENGINE
+# 🧠 AI PREPROCESS (FIXED)
 # ==========================================
 
 def ai_preprocess(aoi):
@@ -82,18 +82,22 @@ def ai_preprocess(aoi):
         ).get('slope')
     )
 
-    # AI classification
-    terrain_type = ee.Algorithms.If(avg_slope.gt(8), "Mountain",
-                    ee.Algorithms.If(avg_slope.gt(3), "Mixed", "Flat"))
+    slope_val = avg_slope.getInfo()
 
-    # AI parameter tuning
-    k = ee.Algorithms.If(avg_slope.gt(8), 1.5,
-        ee.Algorithms.If(avg_slope.gt(3), 1.2, 1.0))
+    if slope_val > 8:
+        terrain_type = "Mountain"
+        k = 1.5
+        smoothing = 60
+    elif slope_val > 3:
+        terrain_type = "Mixed"
+        k = 1.2
+        smoothing = 40
+    else:
+        terrain_type = "Flat"
+        k = 1.0
+        smoothing = 40
 
-    smoothing = ee.Algorithms.If(avg_slope.gt(8), 60, 40)
-
-    return avg_slope, terrain_type, ee.Number(k), smoothing
-
+    return slope_val, terrain_type, k, smoothing
 
 # ==========================================
 # 🔹 UI INPUT
@@ -117,7 +121,6 @@ if input_type == "Coordinates":
 else:
     uploaded_file = st.sidebar.file_uploader("Upload .zip shapefile", type=["zip"])
 
-
 st.sidebar.header("📅 Dates")
 
 before_start = st.sidebar.date_input("Before Start")
@@ -126,7 +129,7 @@ after_start  = st.sidebar.date_input("After Start")
 after_end    = st.sidebar.date_input("After End")
 
 # ==========================================
-# 🔘 BUTTONS (3 STAGES)
+# SESSION STATE
 # ==========================================
 
 if "aoi" not in st.session_state:
@@ -135,32 +138,30 @@ if "aoi" not in st.session_state:
 if "params" not in st.session_state:
     st.session_state.params = None
 
+# ==========================================
+# BUTTONS
+# ==========================================
 
-# ---------- INPUT ----------
 if st.sidebar.button("1️⃣ Process Input"):
     aoi, area_size = process_input(input_type, coords, uploaded_file)
     st.session_state.aoi = aoi
     st.success(f"Input Processed | Area Size: {area_size:.4f}")
 
-
-# ---------- PREPROCESS ----------
 if st.sidebar.button("2️⃣ AI Preprocess"):
     if st.session_state.aoi is None:
         st.error("Process input first")
     else:
-        avg_slope, terrain_type, k, smoothing = ai_preprocess(st.session_state.aoi)
+        slope, terrain, k, smooth = ai_preprocess(st.session_state.aoi)
 
         st.session_state.params = {
-            "slope": avg_slope.getInfo(),
-            "terrain": terrain_type.getInfo(),
+            "slope": slope,
+            "terrain": terrain,
             "k": k,
-            "smooth": smoothing
+            "smooth": smooth
         }
 
-        st.success(f"Terrain: {terrain_type.getInfo()} | Slope: {avg_slope.getInfo():.2f}")
+        st.success(f"Terrain: {terrain} | Slope: {slope:.2f}")
 
-
-# ---------- GENERATE ----------
 if st.sidebar.button("3️⃣ Generate Flood Map"):
 
     if st.session_state.aoi is None or st.session_state.params is None:
@@ -196,10 +197,10 @@ if st.sidebar.button("3️⃣ Generate Flood Map"):
             maxPixels=1e13
         )
 
-        mean = ee.Number(stats.get('VV_mean'))
-        std  = ee.Number(stats.get('VV_stdDev'))
+        mean = ee.Number(stats.get('VV_mean')).getInfo()
+        std  = ee.Number(stats.get('VV_stdDev')).getInfo()
 
-        threshold = mean.add(std.multiply(params["k"]))
+        threshold = mean + std * params["k"]
 
         flood = change.gt(threshold)
 
@@ -214,4 +215,4 @@ if st.sidebar.button("3️⃣ Generate Flood Map"):
         Map.centerObject(aoi, 9)
         Map.to_streamlit(height=600)
 
-        st.success("Flood Map Generated")
+        st.success("Flood Map Generated ✅")
