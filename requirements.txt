@@ -1,7 +1,6 @@
 streamlit
 earthengine-api
 geopandas
-geemap==0.30.4
-python-box==7.1.1
+geemap
 folium
-setuptools>=65.0.0
+setuptools
