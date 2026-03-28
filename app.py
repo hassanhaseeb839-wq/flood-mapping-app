@@ -28,7 +28,23 @@ if "ee_initialized" not in st.session_state:
 # ==========================================
 
 st.set_page_config(layout="wide")
-st.title("🌊 AI Flood Mapping System (Final)")
+st.title("🌊 AI Flood Mapping System")
+
+# ==========================================
+# 📦 SESSION STATE (SAFE INIT)
+# ==========================================
+
+if "aoi" not in st.session_state:
+    st.session_state.aoi = None
+
+if "flood_map" not in st.session_state:
+    st.session_state.flood_map = None
+
+if "before" not in st.session_state:
+    st.session_state.before = None
+
+if "after" not in st.session_state:
+    st.session_state.after = None
 
 # ==========================================
 # 📥 INPUT
@@ -61,16 +77,6 @@ before_start = st.sidebar.date_input("Before Start")
 before_end   = st.sidebar.date_input("Before End")
 after_start  = st.sidebar.date_input("After Start")
 after_end    = st.sidebar.date_input("After End")
-
-# ==========================================
-# 📦 SESSION STATE
-# ==========================================
-
-if "aoi" not in st.session_state:
-    st.session_state.aoi = None
-
-if "flood_map" not in st.session_state:
-    st.session_state.flood_map = None
 
 # ==========================================
 # 🧠 PROCESS INPUT
@@ -120,6 +126,7 @@ if st.sidebar.button("🚀 Generate Flood Map"):
         before = get_s1(before_start, before_end)
         after  = get_s1(after_start, after_end)
 
+        # Save for later use
         st.session_state.before = before
         st.session_state.after = after
 
@@ -138,7 +145,7 @@ if st.sidebar.button("🚀 Generate Flood Map"):
         mean = ee.Number(stats.get('VV_mean')).getInfo()
         std  = ee.Number(stats.get('VV_stdDev')).getInfo()
 
-        threshold = mean + std * 0.5   # Sensitive detection
+        threshold = mean + std * 0.5
 
         flood = change.gt(threshold)
 
@@ -149,10 +156,14 @@ if st.sidebar.button("🚀 Generate Flood Map"):
         st.success("Flood Map Generated ✅")
 
 # ==========================================
-# 🗺️ DISPLAY MAP (FINAL)
+# 🗺️ DISPLAY MAP
 # ==========================================
 
-if st.session_state.flood_map is not None:
+if (
+    st.session_state.flood_map is not None and
+    st.session_state.before is not None and
+    st.session_state.after is not None
+):
 
     aoi = st.session_state.aoi
     flood_img = st.session_state.flood_map
