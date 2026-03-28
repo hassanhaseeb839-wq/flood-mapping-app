@@ -16,12 +16,16 @@ import pandas as pd
 # 🔐 EARTH ENGINE AUTH (FIXED)
 # ==========================================
 
+import ee
+import streamlit as st
+
 if "ee_initialized" not in st.session_state:
-    service_account = st.secrets["gcp_service_account"]["client_email"]
+    
+    service_account_info = dict(st.secrets["gcp_service_account"])  # ✅ FIX
 
     credentials = ee.ServiceAccountCredentials(
-        service_account,
-        key_data=json.dumps(st.secrets["gcp_service_account"])
+        service_account_info["client_email"],
+        key_data=service_account_info
     )
 
     ee.Initialize(credentials)
