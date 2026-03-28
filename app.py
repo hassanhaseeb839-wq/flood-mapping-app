@@ -4,7 +4,7 @@
 
 import streamlit as st
 import ee
-import geemap.foliumap as geemap
+import geemap
 import geopandas as gpd
 import tempfile
 import zipfile
@@ -14,8 +14,7 @@ import pandas as pd
 # ==========================================
 # 🔐 AUTH
 # ==========================================
-import ee
-import streamlit as st
+
 
 service_account = st.secrets["gcp_service_account"]["client_email"]
 
