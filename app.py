@@ -16,11 +16,15 @@ import pandas as pd
 # ==========================================
 
 
+import ee
+import streamlit as st
+import json
+
 service_account = st.secrets["gcp_service_account"]["client_email"]
 
 credentials = ee.ServiceAccountCredentials(
     service_account,
-    key_data=st.secrets["gcp_service_account"]
+    key_data=json.dumps(st.secrets["gcp_service_account"])
 )
 
 ee.Initialize(credentials)
