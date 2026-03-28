@@ -1,7 +1,6 @@
 streamlit
 earthengine-api
 geopandas
-geemap
 folium
-setuptools
 streamlit-folium
+setuptools
