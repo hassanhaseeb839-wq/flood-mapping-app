@@ -9,7 +9,7 @@ import folium
 from streamlit_folium import st_folium
 
 # ==========================================
-# 🔐 EARTH ENGINE AUTH (FINAL FIXED)
+# 🔐 EARTH ENGINE AUTH
 # ==========================================
 
 if "ee_initialized" not in st.session_state:
@@ -24,14 +24,17 @@ if "ee_initialized" not in st.session_state:
     st.session_state.ee_initialized = True
 
 # ==========================================
+# 🎨 UI
+# ==========================================
+
 st.set_page_config(layout="wide")
-st.title("🌊 AI Flood Mapping System")
+st.title("🌊 AI Flood Mapping System (Final)")
 
 # ==========================================
 # 📥 INPUT
 # ==========================================
 
-st.sidebar.header("Input")
+st.sidebar.header("📥 Input")
 
 input_type = st.sidebar.radio("Select Input", ["Coordinates", "Shapefile"])
 
@@ -52,7 +55,7 @@ else:
 # 📅 DATES
 # ==========================================
 
-st.sidebar.header("Dates")
+st.sidebar.header("📅 Dates")
 
 before_start = st.sidebar.date_input("Before Start")
 before_end   = st.sidebar.date_input("Before End")
@@ -97,10 +100,11 @@ def process_input():
 # 🚀 GENERATE FLOOD MAP
 # ==========================================
 
-if st.sidebar.button("Generate Flood Map"):
+if st.sidebar.button("🚀 Generate Flood Map"):
 
     if input_type == "Shapefile" and uploaded_file is None:
         st.error("Upload shapefile first")
+
     else:
         aoi = process_input()
         st.session_state.aoi = aoi
@@ -115,6 +119,9 @@ if st.sidebar.button("Generate Flood Map"):
 
         before = get_s1(before_start, before_end)
         after  = get_s1(after_start, after_end)
+
+        st.session_state.before = before
+        st.session_state.after = after
 
         change = before.subtract(after)
 
@@ -131,7 +138,7 @@ if st.sidebar.button("Generate Flood Map"):
         mean = ee.Number(stats.get('VV_mean')).getInfo()
         std  = ee.Number(stats.get('VV_stdDev')).getInfo()
 
-        threshold = mean + std * 0.8
+        threshold = mean + std * 0.5   # Sensitive detection
 
         flood = change.gt(threshold)
 
@@ -142,23 +149,50 @@ if st.sidebar.button("Generate Flood Map"):
         st.success("Flood Map Generated ✅")
 
 # ==========================================
-# 🗺️ DISPLAY MAP (FINAL FIXED)
+# 🗺️ DISPLAY MAP (FINAL)
 # ==========================================
 
 if st.session_state.flood_map is not None:
 
     aoi = st.session_state.aoi
     flood_img = st.session_state.flood_map
+    before = st.session_state.before
+    after = st.session_state.after
 
-    map_id = flood_img.clip(aoi).getMapId({'palette': ['red']})
+    m = folium.Map(location=[15.5, 104.5], zoom_start=7, control_scale=True)
 
-    m = folium.Map(location=[15.5, 104.5], zoom_start=7)
-
+    # BEFORE layer
+    before_map = before.clip(aoi).getMapId({'min': -25, 'max': 0})
     folium.TileLayer(
-        tiles=map_id['tile_fetcher'].url_format,
-        attr='Google Earth Engine',
-        overlay=True,
-        name='Flood'
+        tiles=before_map['tile_fetcher'].url_format,
+        name='Before',
+        overlay=True
     ).add_to(m)
 
-    st_folium(m, width=900, height=600)
+    # AFTER layer
+    after_map = after.clip(aoi).getMapId({'min': -25, 'max': 0})
+    folium.TileLayer(
+        tiles=after_map['tile_fetcher'].url_format,
+        name='After',
+        overlay=True
+    ).add_to(m)
+
+    # FLOOD layer
+    flood_map = flood_img.clip(aoi).getMapId({'palette': ['red']})
+    folium.TileLayer(
+        tiles=flood_map['tile_fetcher'].url_format,
+        name='Flood',
+        overlay=True
+    ).add_to(m)
+
+    folium.LayerControl().add_to(m)
+
+    # Clickable coordinates
+    m.add_child(folium.LatLngPopup())
+
+    output = st_folium(m, width=1000, height=600)
+
+    if output and output.get("last_clicked"):
+        lat = output["last_clicked"]["lat"]
+        lon = output["last_clicked"]["lng"]
+        st.info(f"📍 Lat: {lat:.5f}, Lon: {lon:.5f}")
