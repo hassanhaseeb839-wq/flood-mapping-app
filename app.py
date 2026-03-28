@@ -14,14 +14,17 @@ import pandas as pd
 # ==========================================
 # 🔐 AUTH
 # ==========================================
-try:
-    ee.Initialize(project='crack-audio-485313-g8')
-except:
-    ee.Authenticate()
-    ee.Initialize(project='crack-audio-485313-g8')
+import ee
+import streamlit as st
 
-st.set_page_config(layout="wide")
-st.title("🌊 AI Universal Flood Mapping System")
+service_account = st.secrets["gcp_service_account"]["client_email"]
+
+credentials = ee.ServiceAccountCredentials(
+    service_account,
+    key_data=st.secrets["gcp_service_account"]
+)
+
+ee.Initialize(credentials)
 
 # ==========================================
 # 🧠 AI INPUT HANDLER
