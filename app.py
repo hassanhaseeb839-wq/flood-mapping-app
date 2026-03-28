@@ -220,10 +220,21 @@ if st.sidebar.button("3️⃣ Generate Flood Map"):
 
         cleaned = flood.focal_max(1).focal_min(1)
 
-        Map = geemap.Map()
-        Map.addLayer(cleaned.clip(aoi), {'palette': ['blue']}, 'Flood')
+       # Convert EE image to URL
+map_id = cleaned.clip(aoi).getMapId({'palette': ['red']})
 
-        Map.centerObject(aoi, 9)
-        Map.to_streamlit(height=600)
+# Create folium map
+m = folium.Map(location=[15.5, 104.5], zoom_start=7)
+
+# Add tile layer
+folium.TileLayer(
+    tiles=map_id['tile_fetcher'].url_format,
+    attr='Google Earth Engine',
+    overlay=True,
+    name='Flood'
+).add_to(m)
+
+# Display in Streamlit
+st_folium(m, width=700, height=500)
 
         st.success("Flood Map Generated ✅")
