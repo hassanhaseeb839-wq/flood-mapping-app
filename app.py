@@ -1,4 +1,6 @@
 # ==========================================
+import folium
+from streamlit_folium import st_folium
 # 🌊 AI FLOOD MAPPING SYSTEM (FINAL CLEAN)
 # ==========================================
 
